@@ -1,0 +1,15 @@
+[package]
+name = "rs-chat"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = "0.8" # Web framework
+serde = { version = "1.0", features = ["derive"] } # Serialization/deserialization
+serde_json = "1.0" # Working with JSON
+tokio = { version = "1", features = ["full"] } # Asynchronous runtime
+uuid = { version = "1", features = ["v4", "serde"] } # Unique identifier with Serde support
+tower = "0.5" # Middleware support
+tower-http = { version = "0.6", features = ["trace"] } # HTTP utilities including TraceLayer
+lazy_static = "1.5" # For lazy_static macro
+anyhow = "1.0" # Error handling
