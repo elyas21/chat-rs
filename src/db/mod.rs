@@ -1,71 +1,69 @@
-use crate::models::user::User;
-use std::{
-    fs::{File, OpenOptions},
-    io::{Read, Write},
-    path::Path,
-    sync::Mutex,
+use mongodb::{
+    Client, Collection, Database,
+    bson::{doc, oid::ObjectId},
+    error::Result as MongoResult,
+    options::{ClientOptions, ReadPreference, SelectionCriteria},
 };
-use tower_http::classify::GrpcCode::FailedPrecondition;
-use uuid::Uuid;
+use std::time::Duration;
 
+use crate::models::user::User;
 use anyhow::Result;
-use lazy_static::lazy_static;
 
-/// Path to the JSON file acting as the database.
-const DB_PATH: &str = "db/users.json";
+pub const USERS_COLLECTION: &str = "users";
 
-/// In-memory store protected by a Mutex for thread-safe access.
-lazy_static! {
-    pub static ref USERS: Mutex<Vec<User>> = Mutex::new(load_users().unwrap_or_default());
+
+/// Build a MongoDB client without a blocking ping on startup.
+/// The driver connects lazily on the first actual database operation.
+/// For non-SRV URIs, `parse` completes instantly (no DNS lookup needed).
+pub async fn build_client(uri: &str, db_name: &str) -> MongoResult<Database> {
+    let mut client_options = ClientOptions::parse(uri).await?;
+    client_options.server_selection_timeout = Some(Duration::from_secs(60));
+    client_options.connect_timeout = Some(Duration::from_secs(30));
+    client_options.selection_criteria = Some(SelectionCriteria::ReadPreference(
+        ReadPreference::SecondaryPreferred { options: None },
+    ));
+
+    let client = Client::with_options(client_options)?;
+    println!("MongoDB client ready (will connect on first request).");
+    Ok(client.database(db_name))
 }
 
-/// Loads users from the JSON file.
-fn load_users() -> Result<Vec<User>> {
-    if !Path::new(DB_PATH).exists() {
-        let file = File::create(DB_PATH)?;
-        serde_json::to_writer(file, &Vec::<User>::new())?;
-    }
+fn users_collection(db: &Database) -> Collection<User> {
+    use mongodb::options::CollectionOptions;
+    let opts = CollectionOptions::builder()
+        .selection_criteria(SelectionCriteria::ReadPreference(
+            ReadPreference::SecondaryPreferred { options: None },
+        ))
+        .build();
+    db.collection_with_options::<User>(USERS_COLLECTION, opts)
+}
 
-    let mut file = File::open(DB_PATH)?;
-    let mut data = String::new();
-    file.read_to_string(&mut data)?;
-    let users = serde_json::from_str(&data)?;
+/// Insert a new user into MongoDB.
+pub async fn add_user(db: &Database, user: User) -> Result<User> {
+    let col = users_collection(db);
+    let result = col.insert_one(user.clone()).await?;
+    let id = result.inserted_id.as_object_id();
+    Ok(User { id, ..user })
+}
+
+/// Retrieve all users from MongoDB.
+pub async fn get_users(db: &Database) -> Result<Vec<User>> {
+    use mongodb::bson::Document;
+    use futures_util::TryStreamExt;
+
+    let col = users_collection(db);
+    let cursor = col.find(Document::new()).await?;
+    let users: Vec<User> = cursor.try_collect().await?;
     Ok(users)
 }
 
-/// Saves the current state of users to the JSON file.
-fn save_users(users: &Vec<User>) -> Result<()> {
-    let file = OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .open(DB_PATH)?;
-    serde_json::to_writer_pretty(file, users)?;
-    Ok(())
-}
-
-/// Adds a new user to the database.
-pub fn add_user(user: User) -> Result<()> {
-    let mut users = USERS.lock().unwrap();
-    users.push(user);
-    save_users(&users)
-}
-
-/// Retrieves all users from the database.
-pub fn get_users() -> Vec<User> {
-    let users = USERS.lock().unwrap();
-    users.clone()
-}
-
-pub fn get_user_by_id(id: &str) -> Result<User> {
-    let s_user = USERS.lock().unwrap();
-
-    s_user
-        .iter()
-        .find(|user| {
-            println!("{:?}", user);
-
-            user.id.to_string() == id
-        })
-        .cloned()
-        .ok_or_else(|| anyhow::anyhow!("USER ID {} not found", id))
+/// Retrieve a single user by their MongoDB ObjectId string.
+pub async fn get_user_by_id(db: &Database, id: &str) -> Result<User> {
+    let oid = ObjectId::parse_str(id)?;
+    let col = users_collection(db);
+    let user = col
+        .find_one(doc! { "_id": oid })
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("User with id {} not found", id))?;
+    Ok(user)
 }

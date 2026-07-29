@@ -8,8 +8,15 @@ axum = "0.8" # Web framework
 serde = { version = "1.0", features = ["derive"] } # Serialization/deserialization
 serde_json = "1.0" # Working with JSON
 tokio = { version = "1", features = ["full"] } # Asynchronous runtime
-uuid = { version = "1", features = ["v4", "serde"] } # Unique identifier with Serde support
 tower = "0.5" # Middleware support
 tower-http = { version = "0.6", features = ["trace"] } # HTTP utilities including TraceLayer
-lazy_static = "1.5" # For lazy_static macro
 anyhow = "1.0" # Error handling
+jsonwebtoken = {version = "11.0.0", features=["rust_crypto"]}
+axum-extra = {version = "0.12.6", features = ["typed-header"]}
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dotenvy = "0.15"
+futures-util = "0.3"
+
+[dependencies.mongodb]
+version = "3.8.0"

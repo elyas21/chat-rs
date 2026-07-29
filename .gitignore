@@ -1,1 +1,27 @@
-/target
+# Rust build artifacts
+/target/
+**/*.rs.bk
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# IDE & Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*.tmp
+*~
+
+# Operating System files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Local DB & storage files
+db/
+*.db
+*.sqlite

@@ -1,9 +1,10 @@
+use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct User {
-    pub id: Uuid,
+    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
+    pub id: Option<ObjectId>,
     pub name: String,
     pub email: String,
 }
@@ -11,7 +12,7 @@ pub struct User {
 impl User {
     pub fn new(name: String, email: String) -> Self {
         User {
-            id: Uuid::new_v4(),
+            id: None,
             name,
             email,
         }
