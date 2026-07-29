@@ -6,11 +6,12 @@ use mongodb::{
 };
 use std::time::Duration;
 
+use crate::models::chat_session::ChatSession;
 use crate::models::user::User;
 use anyhow::Result;
+use mongodb::options::CollectionOptions;
 
 pub const USERS_COLLECTION: &str = "users";
-
 
 /// Build a MongoDB client without a blocking ping on startup.
 /// The driver connects lazily on the first actual database operation.
@@ -29,13 +30,22 @@ pub async fn build_client(uri: &str, db_name: &str) -> MongoResult<Database> {
 }
 
 fn users_collection(db: &Database) -> Collection<User> {
-    use mongodb::options::CollectionOptions;
     let opts = CollectionOptions::builder()
         .selection_criteria(SelectionCriteria::ReadPreference(
             ReadPreference::SecondaryPreferred { options: None },
         ))
         .build();
     db.collection_with_options::<User>(USERS_COLLECTION, opts)
+}
+
+fn chat_collection(db: &Database) -> Collection<ChatSession> {
+    let opts = CollectionOptions::builder()
+        .selection_criteria(SelectionCriteria::ReadPreference(
+            ReadPreference::SecondaryPreferred { options: None },
+        ))
+        .build();
+
+    db.collection_with_options::<ChatSession>(USERS_COLLECTION, opts)
 }
 
 /// Insert a new user into MongoDB.
@@ -46,10 +56,17 @@ pub async fn add_user(db: &Database, user: User) -> Result<User> {
     Ok(User { id, ..user })
 }
 
+pub async fn add_chat_session(db: &Database, chat_session: ChatSession) -> Result<ChatSession> {
+    let col = chat_collection(db);
+    let result = col.insert_one(chat_session.clone()).await?;
+    let id = result.inserted_id.as_object_id();
+    Ok(ChatSession { id, ..chat_session })
+}
+
 /// Retrieve all users from MongoDB.
 pub async fn get_users(db: &Database) -> Result<Vec<User>> {
-    use mongodb::bson::Document;
     use futures_util::TryStreamExt;
+    use mongodb::bson::Document;
 
     let col = users_collection(db);
     let cursor = col.find(Document::new()).await?;
