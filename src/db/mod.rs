@@ -21,8 +21,9 @@ pub const MESSAGES_COLLECTION: &str = "messages";
 /// For non-SRV URIs, `parse` completes instantly (no DNS lookup needed).
 pub async fn build_client(uri: &str, db_name: &str) -> MongoResult<Database> {
     let mut client_options = ClientOptions::parse(uri).await?;
-    client_options.server_selection_timeout = Some(Duration::from_secs(60));
-    client_options.connect_timeout = Some(Duration::from_secs(30));
+    // Fast fail-fast timeout (3s) so server returns 500 instantly if MongoDB is down
+    client_options.server_selection_timeout = Some(Duration::from_secs(3));
+    client_options.connect_timeout = Some(Duration::from_secs(3));
     client_options.selection_criteria = Some(SelectionCriteria::ReadPreference(
         ReadPreference::SecondaryPreferred { options: None },
     ));
@@ -74,6 +75,17 @@ pub async fn add_chat_session(db: &Database, chat_session: ChatSession) -> Resul
     Ok(ChatSession { id, ..chat_session })
 }
 
+/// Retrieve all chat sessions from MongoDB.
+pub async fn get_chat_sessions(db: &Database) -> Result<Vec<ChatSession>> {
+    use futures_util::TryStreamExt;
+    use mongodb::bson::Document;
+
+    let col = chat_collection(db);
+    let cursor = col.find(Document::new()).await?;
+    let sessions: Vec<ChatSession> = cursor.try_collect().await?;
+    Ok(sessions)
+}
+
 /// Retrieve all users from MongoDB.
 pub async fn get_users(db: &Database) -> Result<Vec<User>> {
     use futures_util::TryStreamExt;
@@ -110,3 +122,4 @@ pub async fn get_user_by_id(db: &Database, id: &str) -> Result<User> {
         .ok_or_else(|| anyhow::anyhow!("User with id {} not found", id))?;
     Ok(user)
 }
+
