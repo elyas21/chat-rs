@@ -19,7 +19,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .into_inner(),
     );
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await?;
+    let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
+    let addr = format!("0.0.0.0:{}", port);
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
     println!("✓ Axum Server started successfully on http://127.0.0.1:3000 (Listening for API requests)");
     axum::serve(listener, app).await?;
     Ok(())
