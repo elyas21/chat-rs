@@ -9,7 +9,7 @@ import type {
   AuthSession,
 } from '../types';
 
-const API_BASE = '/v1';
+const API_BASE = (import.meta.env.VITE_API_BASE || '/v1').replace(/\/+$/, '');
 
 const LOCAL_STORAGE_KEYS = {
   AUTH_SESSION: 'rs_chat_auth_session',
