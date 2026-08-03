@@ -25,3 +25,10 @@ Desktop.ini
 db/
 *.db
 *.sqlite
+
+# React UI frontend artifacts
+ui/node_modules/
+ui/dist/
+ui/.vite/
+ui/*.log
+
