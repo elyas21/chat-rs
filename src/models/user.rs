@@ -1,22 +1,18 @@
-use std::str;
-
-use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct User {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
-    pub id: Option<ObjectId>,
+    pub id: Option<String>,
     pub name: String,
     pub email: String,
     pub password_hash: Option<String>,
-
 }
 
 impl User {
     pub fn new(name: String, email: String) -> Self {
+        let id = format!("usr_{}", uuid::Uuid::new_v4());
         User {
-            id: None,
+            id: Some(id),
             name,
             email,
             password_hash: None,

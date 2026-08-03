@@ -3,14 +3,15 @@ use axum::routing::{get, post};
 
 use crate::auth::{authorize, protected};
 use crate::handlers::v1::{
-    create_user, get_user_by_id_handler, get_users_handler,
-    create_session_handler, get_sessions_handler,
-    send_message_handler, get_messages_handler,
+    create_session_handler, create_user, get_messages_handler, get_sessions_handler,
+    get_user_by_id_handler, get_users_handler, health_check_handler, send_message_handler,
 };
 use crate::AppState;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        // health
+        .route("/health", get(health_check_handler))
         // users
         .route("/users", post(create_user))
         .route("/users", get(get_users_handler))

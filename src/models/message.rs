@@ -1,10 +1,8 @@
-use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Message {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
-    pub id: Option<ObjectId>,
+    pub id: Option<String>,
     pub session_id: String,
     pub sender_id: String,
     pub content: String,
@@ -13,6 +11,13 @@ pub struct Message {
 
 impl Message {
     pub fn new(session_id: String, sender_id: String, content: String, timestamp: i64) -> Self {
-        Message { id: None, session_id, sender_id, content, timestamp }
+        let id = format!("msg_{}", uuid::Uuid::new_v4());
+        Message {
+            id: Some(id),
+            session_id,
+            sender_id,
+            content,
+            timestamp,
+        }
     }
 }

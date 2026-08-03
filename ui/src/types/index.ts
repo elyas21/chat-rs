@@ -1,26 +1,22 @@
-export interface MongoObjectId {
-  $oid?: string;
-}
-
 export interface User {
-  _id?: string | MongoObjectId;
-  id?: string | MongoObjectId;
+  id?: string;
+  _id?: string;
   name: string;
   email: string;
   password_hash?: string;
 }
 
 export interface ChatSession {
-  _id?: string | MongoObjectId;
-  id?: string | MongoObjectId;
+  id?: string;
+  _id?: string;
   room_name: string;
   participants: string[];
   is_direct?: boolean;
 }
 
 export interface Message {
-  _id?: string | MongoObjectId;
-  id?: string | MongoObjectId;
+  id?: string;
+  _id?: string;
   session_id: string;
   sender_id: string;
   content: string;

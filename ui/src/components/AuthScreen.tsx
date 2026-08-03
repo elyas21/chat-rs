@@ -36,14 +36,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
     try {
       if (!isBackendConnected) {
-        throw new Error('MongoDB database server is offline. Please start MongoDB to continue.');
+        throw new Error('Redis Cloud database server is offline. Please start the backend to continue.');
       }
 
       // 1. Authenticate with JWT handler (POST /v1/authorize)
       const authRes = await api.authorize(clientId, clientSecret);
       const token = authRes.data.access_token;
 
-      // 2. Pick target user profile loaded from MongoDB
+      // 2. Pick target user profile loaded from Redis Cloud
       let targetUser: User | undefined;
       if (selectedUserId) {
         targetUser = users.find((u) => extractId(u) === selectedUserId);
@@ -74,10 +74,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
     try {
       if (!isBackendConnected) {
-        throw new Error('MongoDB database server is offline. Unable to insert user.');
+        throw new Error('Redis Cloud database server is offline. Unable to insert user.');
       }
 
-      // 1. Create user in Axum / MongoDB (POST /v1/users)
+      // 1. Create user in Axum / Redis Cloud (POST /v1/users)
       const userRes = await api.createUser({
         name: signupName.trim(),
         email: signupEmail.trim(),
@@ -113,11 +113,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             rs-chat Workspace
           </h1>
           <p className="text-xs text-gray-400">
-            Realtime Chat Engine built with <strong className="text-indigo-400 font-medium">Rust, Axum & MongoDB</strong>
+            Realtime Chat Engine built with <strong className="text-indigo-400 font-medium">Rust, Axum & Redis Cloud</strong>
           </p>
         </div>
 
-        {/* MongoDB Status Banner */}
+        {/* Redis Cloud Status Banner */}
         <div
           className={`flex items-center justify-between px-4 py-2.5 rounded-xl border text-xs font-medium ${
             isBackendConnected
@@ -127,7 +127,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         >
           <div className="flex items-center gap-2">
             <Database size={15} />
-            <span>MongoDB Database Status:</span>
+            <span>Redis Cloud Status:</span>
           </div>
           <div className="flex items-center gap-2 font-semibold">
             <div
@@ -139,15 +139,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           </div>
         </div>
 
-        {/* MongoDB Offline Alert Banner */}
+        {/* Redis Offline Alert Banner */}
         {!isBackendConnected && (
           <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs space-y-1.5 animate-fade-in">
             <div className="flex items-center gap-2 font-bold text-rose-200 text-sm">
               <AlertTriangle size={16} />
-              MongoDB Database Connection Down
+              Redis Cloud Connection Offline
             </div>
             <p className="text-[11px] leading-relaxed text-rose-300/90">
-              {dbError || 'Unable to connect to the MongoDB server. Please ensure MongoDB is running locally or MONGODB_URI is set.'}
+              {dbError || 'Unable to connect to Redis Cloud server. Please ensure Axum server is running.'}
             </p>
           </div>
         )}
@@ -190,7 +190,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-gray-300 mb-1.5">
-                Select MongoDB User Profile
+                Select Redis User Profile
               </label>
               <div className="relative">
                 <select
@@ -200,7 +200,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   className="w-full bg-gray-950/70 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-indigo-500/70 transition-all cursor-pointer disabled:opacity-50"
                 >
                   {users.length === 0 ? (
-                    <option value="">-- No Users Found in MongoDB --</option>
+                    <option value="">-- No Users Found in Redis Cloud --</option>
                   ) : (
                     users.map((u) => {
                       const uid = extractId(u);
@@ -215,7 +215,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               </div>
               {users.length === 0 && isBackendConnected && (
                 <p className="text-[11px] text-amber-400 mt-1.5">
-                  No users found in MongoDB database. Switch to <strong>Sign Up</strong> tab to register a new user!
+                  No users found in Redis Cloud. Switch to <strong>Sign Up</strong> tab to register a new user!
                 </p>
               )}
             </div>
@@ -250,7 +250,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               disabled={isLoading || !isBackendConnected || users.length === 0}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white font-semibold text-xs shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
             >
-              <span>{isLoading ? 'Authenticating...' : 'Sign In with MongoDB'}</span>
+              <span>{isLoading ? 'Authenticating...' : 'Sign In with Redis Cloud'}</span>
               <ArrowRight size={16} />
             </button>
           </form>
@@ -294,14 +294,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               disabled={isLoading || !isBackendConnected || !signupName.trim() || !signupEmail.trim()}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white font-semibold text-xs shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
             >
-              <span>{isLoading ? 'Inserting into MongoDB...' : 'Save User to MongoDB'}</span>
+              <span>{isLoading ? 'Inserting into Redis Cloud...' : 'Save User to Redis Cloud'}</span>
               <CheckCircle2 size={16} />
             </button>
           </form>
         )}
 
         <div className="text-center text-[11px] text-gray-500 pt-2 border-t border-white/10">
-          Strict MongoDB Persistence & Axum v0.8 API
+          Strict Redis Cloud Persistence & Axum v0.8 API
         </div>
       </div>
     </div>

@@ -39,7 +39,7 @@ export function App() {
     setToast({ type, message });
   };
 
-  // Load app data strictly from MongoDB
+  // Load app data strictly from Redis Cloud
   const loadInitialData = async () => {
     setIsRefreshing(true);
     setDbError('');
@@ -47,11 +47,11 @@ export function App() {
       const isOnline = await api.checkHealth();
       setIsBackendConnected(isOnline);
 
-      // Load Users from MongoDB
+      // Load Users from Redis Cloud
       const usersRes = await api.getUsers();
       setUsers(usersRes.data);
 
-      // Load Sessions from MongoDB
+      // Load Sessions from Redis Cloud
       const sessionsRes = await api.getSessions();
       setSessions(sessionsRes.data);
 
@@ -60,7 +60,7 @@ export function App() {
       }
     } catch (err: any) {
       setIsBackendConnected(false);
-      setDbError(err.message || 'MongoDB database server is down or unreachable.');
+      setDbError(err.message || 'Redis Cloud database server is down or unreachable.');
     } finally {
       setIsRefreshing(false);
     }
@@ -70,7 +70,7 @@ export function App() {
     loadInitialData();
   }, []);
 
-  // Fetch current session messages from MongoDB
+  // Fetch current session messages from Redis Cloud
   const fetchMessages = async (sessionId: string) => {
     if (!sessionId) return;
     setIsLoadingMessages(true);
@@ -78,7 +78,7 @@ export function App() {
       const res = await api.getMessages(sessionId);
       setMessages(res.data);
     } catch (err: any) {
-      console.error('Error fetching messages from MongoDB:', err);
+      console.error('Error fetching messages from Redis Cloud:', err);
     } finally {
       setIsLoadingMessages(false);
     }
@@ -123,9 +123,9 @@ export function App() {
     try {
       const res = await api.createUser({ name, email });
       setUsers((prev) => [...prev, res.data]);
-      showToast('success', `Saved user "${name}" to MongoDB!`);
+      showToast('success', `Saved user "${name}" to Redis Cloud!`);
     } catch (err: any) {
-      showToast('error', `Failed to save user in MongoDB: ${err.message}`);
+      showToast('error', `Failed to save user in Redis Cloud: ${err.message}`);
     }
   };
 
@@ -142,9 +142,9 @@ export function App() {
       setSessions((prev) => [res.data, ...prev]);
       const newSid = extractId(res.data);
       setActiveSessionId(newSid);
-      showToast('success', `Created group room "${roomName}" in MongoDB!`);
+      showToast('success', `Created group room "${roomName}" in Redis Cloud!`);
     } catch (err: any) {
-      showToast('error', `Failed to create room in MongoDB: ${err.message}`);
+      showToast('error', `Failed to create room in Redis Cloud: ${err.message}`);
     }
   };
 
@@ -214,11 +214,11 @@ export function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#090d16] text-white">
-      {/* Top Banner if MongoDB is Down */}
+      {/* Top Banner if Redis Cloud is Down */}
       {!isBackendConnected && (
         <div className="bg-rose-600/90 text-white px-4 py-2 text-xs font-semibold flex items-center justify-center gap-2 shadow-md">
           <AlertTriangle size={16} />
-          <span>MongoDB Database Server is Offline or Down. Data operations require MongoDB to be running.</span>
+          <span>Redis Cloud Database Server is Offline or Down. Ensure backend is running and REDIS_URL is accessible.</span>
         </div>
       )}
 

@@ -5,7 +5,6 @@ import type {
   CreateUserPayload,
   CreateSessionPayload,
   CreateMessagePayload,
-  AuthBody,
   ApiResponse,
   AuthSession,
 } from '../types';
@@ -16,7 +15,7 @@ const LOCAL_STORAGE_KEYS = {
   AUTH_SESSION: 'rs_chat_auth_session',
 };
 
-const FETCH_TIMEOUT_MS = 3500;
+const FETCH_TIMEOUT_MS = 6000;
 
 function getLocal<T>(key: string, defaultVal: T): T {
   try {
@@ -35,18 +34,12 @@ function setLocal<T>(key: string, val: T): void {
   }
 }
 
-// Utility to safely extract string ID from MongoDB ObjectId or string
+// Utility to extract string ID
 export function extractId(obj?: any): string {
   if (!obj) return '';
   if (typeof obj === 'string') return obj;
-  if (obj._id) {
-    if (typeof obj._id === 'string') return obj._id;
-    if (typeof obj._id === 'object' && obj._id.$oid) return obj._id.$oid;
-  }
-  if (obj.id) {
-    if (typeof obj.id === 'string') return obj.id;
-    if (typeof obj.id === 'object' && obj.id.$oid) return obj.id.$oid;
-  }
+  if (obj.id && typeof obj.id === 'string') return obj.id;
+  if (obj._id && typeof obj._id === 'string') return obj._id;
   return String(obj);
 }
 
@@ -64,22 +57,24 @@ export const api = {
   },
 
   /**
-   * Check if Axum server and MongoDB database are healthy and responding
+   * Check if Axum server and Redis Cloud database are healthy and responding
    */
   async checkHealth(): Promise<boolean> {
     try {
-      const res = await fetch(`${API_BASE}/users`, {
+      const res = await fetch(`${API_BASE}/health`, {
         method: 'GET',
-        signal: AbortSignal.timeout(2500),
+        signal: AbortSignal.timeout(5000),
       });
-      return res.ok;
+      if (!res.ok) return false;
+      const data = await res.json();
+      return data.status === 'ok';
     } catch {
       return false;
     }
   },
 
   /**
-   * Fetch all users directly from MongoDB via Axum (GET /v1/users)
+   * Fetch all users directly from Redis Cloud via Axum (GET /v1/users)
    */
   async getUsers(): Promise<ApiResponse<User[]>> {
     try {
@@ -88,17 +83,17 @@ export const api = {
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
-        throw new Error(json.error || `MongoDB Error (HTTP ${res.status})`);
+        throw new Error(json.error || `Redis Error (HTTP ${res.status})`);
       }
       const data = await res.json();
       return { data, isBackend: true };
     } catch (err: any) {
-      throw new Error(err.message || 'Unable to connect to MongoDB server');
+      throw new Error(err.message || 'Unable to connect to Redis Cloud server');
     }
   },
 
   /**
-   * Create new user in MongoDB (POST /v1/users)
+   * Create new user in Redis Cloud (POST /v1/users)
    */
   async createUser(payload: CreateUserPayload): Promise<ApiResponse<User>> {
     try {
@@ -110,17 +105,17 @@ export const api = {
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
-        throw new Error(json.error || `MongoDB Insert Error (HTTP ${res.status})`);
+        throw new Error(json.error || `Redis Insert Error (HTTP ${res.status})`);
       }
       const data = await res.json();
       return { data, isBackend: true };
     } catch (err: any) {
-      throw new Error(err.message || 'Failed to save user into MongoDB');
+      throw new Error(err.message || 'Failed to save user into Redis Cloud');
     }
   },
 
   /**
-   * Fetch all chat sessions directly from MongoDB via Axum (GET /v1/sessions)
+   * Fetch all chat sessions directly from Redis Cloud via Axum (GET /v1/sessions)
    */
   async getSessions(): Promise<ApiResponse<ChatSession[]>> {
     try {
@@ -129,7 +124,7 @@ export const api = {
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
-        throw new Error(json.error || `MongoDB Session Error (HTTP ${res.status})`);
+        throw new Error(json.error || `Redis Session Error (HTTP ${res.status})`);
       }
       const data = await res.json();
       return { data, isBackend: true };
@@ -139,7 +134,7 @@ export const api = {
   },
 
   /**
-   * Create new chat session room in MongoDB (POST /v1/sessions)
+   * Create new chat session room in Redis Cloud (POST /v1/sessions)
    */
   async createSession(payload: CreateSessionPayload, isDirect: boolean = false): Promise<ApiResponse<ChatSession>> {
     try {
@@ -151,7 +146,7 @@ export const api = {
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
-        throw new Error(json.error || `MongoDB Room Error (HTTP ${res.status})`);
+        throw new Error(json.error || `Redis Room Error (HTTP ${res.status})`);
       }
       const data = await res.json();
       const sessionWithFlag: ChatSession = {
@@ -160,12 +155,12 @@ export const api = {
       };
       return { data: sessionWithFlag, isBackend: true };
     } catch (err: any) {
-      throw new Error(err.message || 'Failed to create room in MongoDB');
+      throw new Error(err.message || 'Failed to create room in Redis Cloud');
     }
   },
 
   /**
-   * Get or create a 1-on-1 Direct Message session in MongoDB
+   * Get or create a 1-on-1 Direct Message session in Redis Cloud
    */
   async getOrCreateDirectSession(user1Id: string, user2Id: string): Promise<ChatSession> {
     const { data: allSessions } = await this.getSessions();
@@ -200,7 +195,7 @@ export const api = {
     const { data: allSessions } = await this.getSessions();
     const existing = allSessions.find((s) => extractId(s) === sessionId);
     if (!existing) {
-      throw new Error('Group session not found in MongoDB');
+      throw new Error('Group session not found in Redis Cloud');
     }
     const updatedParticipants = Array.from(
       new Set([...existing.participants.map(String), ...newParticipantIds])
@@ -215,7 +210,7 @@ export const api = {
   },
 
   /**
-   * Fetch session messages directly from MongoDB via Axum (GET /v1/sessions/:id/messages)
+   * Fetch session messages directly from Redis Cloud via Axum (GET /v1/sessions/:id/messages)
    */
   async getMessages(sessionId: string): Promise<ApiResponse<Message[]>> {
     try {
@@ -224,7 +219,7 @@ export const api = {
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
-        throw new Error(json.error || `MongoDB Messages Error (HTTP ${res.status})`);
+        throw new Error(json.error || `Redis Messages Error (HTTP ${res.status})`);
       }
       const data = await res.json();
       return { data, isBackend: true };
@@ -234,7 +229,7 @@ export const api = {
   },
 
   /**
-   * Send a message to MongoDB (POST /v1/sessions/:id/messages)
+   * Send a message to Redis Cloud (POST /v1/sessions/:id/messages)
    */
   async sendMessage(sessionId: string, payload: CreateMessagePayload): Promise<ApiResponse<Message>> {
     try {
@@ -246,19 +241,19 @@ export const api = {
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
-        throw new Error(json.error || `MongoDB Send Error (HTTP ${res.status})`);
+        throw new Error(json.error || `Redis Send Error (HTTP ${res.status})`);
       }
       const data = await res.json();
       return { data, isBackend: true };
     } catch (err: any) {
-      throw new Error(err.message || 'Failed to send message to MongoDB');
+      throw new Error(err.message || 'Failed to send message to Redis Cloud');
     }
   },
 
   /**
    * Authorize JWT credentials (POST /v1/authorize)
    */
-  async authorize(clientId: string, clientSecret: string): Promise<{ data: AuthBody }> {
+  async authorize(clientId: string, clientSecret: string): Promise<{ data: { access_token: string; token_type: string } }> {
     const res = await fetch(`${API_BASE}/authorize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -273,21 +268,17 @@ export const api = {
   },
 
   async getProtected(token: string): Promise<string> {
-    try {
-      const res = await fetch(`${API_BASE}/protected`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      });
-      const text = await res.text();
-      if (!res.ok) {
-        throw new Error(text || 'Unauthorized request');
-      }
-      return text;
-    } catch (err: any) {
-      throw new Error(err.message || 'Unauthorized / Protected route error');
+    const res = await fetch(`${API_BASE}/protected`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(text || 'Unauthorized request');
     }
+    return text;
   }
 };

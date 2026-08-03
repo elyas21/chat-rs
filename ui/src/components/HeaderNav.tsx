@@ -30,16 +30,16 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
               rs-chat
             </span>
             <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-              Axum v0.8
+              Axum + Redis
             </span>
           </div>
-          <p className="text-[11px] text-gray-400">Tokio Async + MongoDB</p>
+          <p className="text-[11px] text-gray-400">Tokio Async + Redis Cloud</p>
         </div>
       </div>
 
-      {/* Right Controls: MongoDB Status, Current User Profile, Logout */}
+      {/* Right Controls: Redis Cloud Status, Current User Profile, Logout */}
       <div className="flex items-center gap-4">
-        {/* MongoDB Status Badge */}
+        {/* Redis Status Badge */}
         <div
           className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-medium border ${
             isBackendConnected
@@ -53,7 +53,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
               isBackendConnected ? 'bg-emerald-400 text-emerald-400' : 'bg-rose-500 text-rose-500'
             }`}
           />
-          <span>{isBackendConnected ? 'MongoDB Live (:3000)' : 'MongoDB Down / Offline'}</span>
+          <span>{isBackendConnected ? 'Redis Cloud Live (:3000)' : 'Redis Offline'}</span>
         </div>
 
         {/* Refresh Data */}

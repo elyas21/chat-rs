@@ -1,16 +1,22 @@
-use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ChatSession {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
-    pub id: Option<ObjectId>,
+    pub id: Option<String>,
     pub room_name: String,
     pub participants: Vec<String>,
+    #[serde(default)]
+    pub is_direct: Option<bool>,
 }
 
 impl ChatSession {
     pub fn new(room_name: String, participants: Vec<String>) -> Self {
-        ChatSession { id: None, room_name, participants }
+        let id = format!("sess_{}", uuid::Uuid::new_v4());
+        ChatSession {
+            id: Some(id),
+            room_name,
+            participants,
+            is_direct: Some(false),
+        }
     }
 }
