@@ -1,3 +1,5 @@
+use std::str;
+
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
@@ -7,6 +9,8 @@ pub struct User {
     pub id: Option<ObjectId>,
     pub name: String,
     pub email: String,
+    pub password_hash: Option<String>,
+
 }
 
 impl User {
@@ -15,6 +19,7 @@ impl User {
             id: None,
             name,
             email,
+            password_hash: None,
         }
     }
 }

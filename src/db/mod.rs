@@ -7,11 +7,14 @@ use mongodb::{
 use std::time::Duration;
 
 use crate::models::chat_session::ChatSession;
+use crate::models::message::Message;
 use crate::models::user::User;
 use anyhow::Result;
 use mongodb::options::CollectionOptions;
 
 pub const USERS_COLLECTION: &str = "users";
+pub const SESSIONS_COLLECTION: &str = "chat_sessions";
+pub const MESSAGES_COLLECTION: &str = "messages";
 
 /// Build a MongoDB client without a blocking ping on startup.
 /// The driver connects lazily on the first actual database operation.
@@ -44,8 +47,16 @@ fn chat_collection(db: &Database) -> Collection<ChatSession> {
             ReadPreference::SecondaryPreferred { options: None },
         ))
         .build();
+    db.collection_with_options::<ChatSession>(SESSIONS_COLLECTION, opts)
+}
 
-    db.collection_with_options::<ChatSession>(USERS_COLLECTION, opts)
+fn messages_collection(db: &Database) -> Collection<Message> {
+    let opts = CollectionOptions::builder()
+        .selection_criteria(SelectionCriteria::ReadPreference(
+            ReadPreference::SecondaryPreferred { options: None },
+        ))
+        .build();
+    db.collection_with_options::<Message>(MESSAGES_COLLECTION, opts)
 }
 
 /// Insert a new user into MongoDB.
@@ -72,6 +83,21 @@ pub async fn get_users(db: &Database) -> Result<Vec<User>> {
     let cursor = col.find(Document::new()).await?;
     let users: Vec<User> = cursor.try_collect().await?;
     Ok(users)
+}
+
+pub async fn add_message(db: &Database, message: Message) -> Result<Message> {
+    let col = messages_collection(db);
+    let result = col.insert_one(message.clone()).await?;
+    let id = result.inserted_id.as_object_id();
+    Ok(Message { id, ..message })
+}
+
+pub async fn get_messages_by_session(db: &Database, session_id: &str) -> Result<Vec<Message>> {
+    use futures_util::TryStreamExt;
+    let col = messages_collection(db);
+    let cursor = col.find(doc! { "session_id": session_id }).await?;
+    let messages: Vec<Message> = cursor.try_collect().await?;
+    Ok(messages)
 }
 
 /// Retrieve a single user by their MongoDB ObjectId string.
