@@ -17,21 +17,12 @@ fn get_test_url() -> String {
 
 async fn get_test_conn_manager() -> redis::aio::ConnectionManager {
     let url = get_test_url();
-    if let Ok(client) = redis::Client::open(url.clone()) {
-        if let Ok(Ok(mgr)) = tokio::time::timeout(
-            std::time::Duration::from_secs(2),
-            redis::aio::ConnectionManager::new(client),
-        )
+    let mut info: redis::ConnectionInfo = redis::IntoConnectionInfo::into_connection_info(url.as_str()).expect("Invalid URL");
+    info.redis.protocol = redis::ProtocolVersion::RESP2;
+    let client = redis::Client::open(info).expect("Invalid Redis Client");
+    redis::aio::ConnectionManager::new(client)
         .await
-        {
-            return mgr;
-        }
-    }
-
-    let local_client = redis::Client::open("redis://127.0.0.1:6379").expect("Failed to create local Redis client");
-    redis::aio::ConnectionManager::new(local_client)
-        .await
-        .expect("Failed to connect to local test Redis")
+        .expect("Failed to connect to test Redis endpoint")
 }
 
 async fn get_test_app_state() -> AppState {
