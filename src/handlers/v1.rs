@@ -15,14 +15,35 @@ use crate::models::message::Message;
 use crate::models::user::User;
 
 pub async fn health_check_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let is_redis_ok = crate::db::get_con(&state.client).await.is_ok();
-    (
-        StatusCode::OK,
-        Json(serde_json::json!({
-            "status": "ok",
-            "redis": is_redis_ok
-        })),
+    let mut con = state.conn_manager.clone();
+    let is_redis_ok = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        redis::cmd("PING").query_async::<String>(&mut con),
     )
+    .await
+    .map(|res| res.is_ok())
+    .unwrap_or(false);
+
+    if is_redis_ok {
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "ok",
+                "redis": true
+            })),
+        )
+            .into_response()
+    } else {
+        tracing::warn!("Health check failed: Redis ping failed or timed out");
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "status": "unhealthy",
+                "redis": false
+            })),
+        )
+            .into_response()
+    }
 }
 
 // ── User payloads ────────────────────────────────────────────────────────────
@@ -38,24 +59,30 @@ pub async fn create_user(
     Json(payload): Json<CreateUserPayload>,
 ) -> impl IntoResponse {
     let user = User::new(payload.name, payload.email);
-    match add_user(&state.client, user).await {
+    match add_user(&state.conn_manager, user).await {
         Ok(created) => (StatusCode::CREATED, Json(created)).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => {
+            tracing::error!("create_user handler error: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+                .into_response()
+        }
     }
 }
 
 pub async fn get_users_handler(State(state): State<AppState>) -> impl IntoResponse {
-    match get_users(&state.client).await {
+    match get_users(&state.conn_manager).await {
         Ok(users) => (StatusCode::OK, Json(users)).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => {
+            tracing::error!("get_users_handler error: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -63,13 +90,16 @@ pub async fn get_user_by_id_handler(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    match get_user_by_id(&state.client, &id).await {
+    match get_user_by_id(&state.conn_manager, &id).await {
         Ok(user) => (StatusCode::OK, Json(user)).into_response(),
-        Err(e) => (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => {
+            tracing::error!("get_user_by_id_handler error for id '{}': {:?}", id, e);
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -86,24 +116,30 @@ pub async fn create_session_handler(
     Json(payload): Json<CreateSessionPayload>,
 ) -> impl IntoResponse {
     let session = ChatSession::new(payload.room_name, payload.participants);
-    match add_chat_session(&state.client, session).await {
+    match add_chat_session(&state.conn_manager, session).await {
         Ok(created) => (StatusCode::CREATED, Json(created)).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => {
+            tracing::error!("create_session_handler error: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+                .into_response()
+        }
     }
 }
 
 pub async fn get_sessions_handler(State(state): State<AppState>) -> impl IntoResponse {
-    match get_chat_sessions(&state.client).await {
+    match get_chat_sessions(&state.conn_manager).await {
         Ok(sessions) => (StatusCode::OK, Json(sessions)).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => {
+            tracing::error!("get_sessions_handler error: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -122,13 +158,16 @@ pub async fn send_message_handler(
 ) -> impl IntoResponse {
     let timestamp = chrono::Utc::now().timestamp();
     let message = Message::new(session_id, payload.sender_id, payload.content, timestamp);
-    match add_message(&state.client, message).await {
+    match add_message(&state.conn_manager, message).await {
         Ok(created) => (StatusCode::CREATED, Json(created)).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => {
+            tracing::error!("send_message_handler error: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -136,12 +175,16 @@ pub async fn get_messages_handler(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> impl IntoResponse {
-    match get_messages_by_session(&state.client, &session_id).await {
+    match get_messages_by_session(&state.conn_manager, &session_id).await {
         Ok(messages) => (StatusCode::OK, Json(messages)).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => {
+            tracing::error!("get_messages_handler error for session '{}': {:?}", session_id, e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+                .into_response()
+        }
     }
 }
+

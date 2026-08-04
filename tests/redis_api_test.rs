@@ -10,16 +10,22 @@ use rs_chat::{
 };
 use tower::ServiceExt;
 
-fn get_test_client() -> redis::Client {
+fn get_test_url() -> String {
     dotenvy::dotenv().ok();
-    let url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
-    redis::Client::open(url).expect("Failed to create Redis client")
+    std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string())
+}
+
+async fn get_test_conn_manager() -> redis::aio::ConnectionManager {
+    let client = redis::Client::open(get_test_url()).expect("Failed to create Redis client");
+    db::get_con_from_client(&client)
+        .await
+        .expect("Failed to get Redis ConnectionManager")
 }
 
 #[tokio::test]
 async fn test_redis_connection() {
-    let client = get_test_client();
-    let mut con = db::get_con(&client)
+    let conn_mgr = get_test_conn_manager().await;
+    let mut con = db::get_con(&conn_mgr)
         .await
         .expect("Failed to get Redis connection");
     let ping_res: String = redis::cmd("PING")
@@ -31,12 +37,12 @@ async fn test_redis_connection() {
 
 #[tokio::test]
 async fn test_user_persistence() {
-    let client = get_test_client();
+    let conn_mgr = get_test_conn_manager().await;
     let unique_email = format!("test_{}@example.com", uuid::Uuid::new_v4());
     let test_user = User::new("Integration Test User".to_string(), unique_email);
 
     // Test Create User
-    let created = db::add_user(&client, test_user.clone())
+    let created = db::add_user(&conn_mgr, test_user.clone())
         .await
         .expect("Failed to add user");
     assert!(created.id.is_some());
@@ -44,13 +50,13 @@ async fn test_user_persistence() {
     let user_id = created.id.unwrap();
 
     // Test Get User by ID
-    let fetched = db::get_user_by_id(&client, &user_id)
+    let fetched = db::get_user_by_id(&conn_mgr, &user_id)
         .await
         .expect("Failed to fetch user by ID");
     assert_eq!(fetched.name, "Integration Test User");
 
     // Test Get All Users
-    let all_users = db::get_users(&client)
+    let all_users = db::get_users(&conn_mgr)
         .await
         .expect("Failed to fetch all users");
     assert!(all_users.iter().any(|u| u.id.as_deref() == Some(&user_id)));
@@ -58,7 +64,7 @@ async fn test_user_persistence() {
 
 #[tokio::test]
 async fn test_session_persistence() {
-    let client = get_test_client();
+    let conn_mgr = get_test_conn_manager().await;
     let room_name = format!("Test Room {}", uuid::Uuid::new_v4());
     let test_session = ChatSession::new(
         room_name,
@@ -66,7 +72,7 @@ async fn test_session_persistence() {
     );
 
     // Test Create Session
-    let created = db::add_chat_session(&client, test_session)
+    let created = db::add_chat_session(&conn_mgr, test_session)
         .await
         .expect("Failed to add chat session");
     assert!(created.id.is_some());
@@ -74,7 +80,7 @@ async fn test_session_persistence() {
     let session_id = created.id.unwrap();
 
     // Test Get All Sessions
-    let all_sessions = db::get_chat_sessions(&client)
+    let all_sessions = db::get_chat_sessions(&conn_mgr)
         .await
         .expect("Failed to fetch chat sessions");
     assert!(all_sessions.iter().any(|s| s.id.as_deref() == Some(&session_id)));
@@ -82,7 +88,7 @@ async fn test_session_persistence() {
 
 #[tokio::test]
 async fn test_message_persistence() {
-    let client = get_test_client();
+    let conn_mgr = get_test_conn_manager().await;
     let session_id = format!("sess_test_{}", uuid::Uuid::new_v4());
     let test_msg = Message::new(
         session_id.clone(),
@@ -92,13 +98,13 @@ async fn test_message_persistence() {
     );
 
     // Test Add Message
-    let created = db::add_message(&client, test_msg)
+    let created = db::add_message(&conn_mgr, test_msg)
         .await
         .expect("Failed to add message");
     assert!(created.id.is_some());
 
     // Test Get Messages by Session
-    let messages = db::get_messages_by_session(&client, &session_id)
+    let messages = db::get_messages_by_session(&conn_mgr, &session_id)
         .await
         .expect("Failed to get messages");
     assert!(!messages.is_empty());
@@ -107,8 +113,8 @@ async fn test_message_persistence() {
 
 #[tokio::test]
 async fn test_axum_http_api_routes() {
-    let client = get_test_client();
-    let state = AppState { client };
+    let url = get_test_url();
+    let state = AppState::new(&url).await.expect("Failed to create AppState");
     let app = routes::app_router(state);
 
     // 1. GET /v1/users
@@ -202,3 +208,4 @@ async fn test_axum_http_api_routes() {
     assert!(!messages.is_empty(), "Messages list should not be empty for session {}", session_id);
     assert_eq!(messages[0].content, "Hello from Axum HTTP integration test!");
 }
+

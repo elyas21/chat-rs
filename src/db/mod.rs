@@ -1,7 +1,6 @@
 use anyhow::Result;
 use redis::AsyncCommands;
-use redis::aio::MultiplexedConnection;
-use std::time::Duration;
+use redis::aio::ConnectionManager;
 
 use crate::models::chat_session::ChatSession;
 use crate::models::message::Message;
@@ -10,30 +9,32 @@ use crate::models::user::User;
 pub const USERS_INDEX_KEY: &str = "users:index";
 pub const SESSIONS_INDEX_KEY: &str = "sessions:index";
 
-/// Acquire an async multiplexed connection to Redis with automatic fallback
-pub async fn get_con(client: &redis::Client) -> Result<MultiplexedConnection> {
-    if let Ok(Ok(con)) = tokio::time::timeout(
-        Duration::from_secs(2),
-        client.get_multiplexed_async_connection(),
+/// Acquire a cloned connection handle from the ConnectionManager
+pub async fn get_con(conn_mgr: &ConnectionManager) -> Result<ConnectionManager> {
+    Ok(conn_mgr.clone())
+}
+
+/// Helper to create a ConnectionManager directly from a redis::Client (for legacy or test usage)
+pub async fn get_con_from_client(client: &redis::Client) -> Result<ConnectionManager> {
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        ConnectionManager::new(client.clone()),
     )
     .await
     {
-        return Ok(con);
+        Ok(Ok(mgr)) => Ok(mgr),
+        _ => {
+            tracing::warn!("Primary Redis client connection failed/timed out. Falling back to local Redis 127.0.0.1:6379");
+            let fallback_client = redis::Client::open("redis://127.0.0.1:6379")?;
+            let mgr = ConnectionManager::new(fallback_client).await?;
+            Ok(mgr)
+        }
     }
-
-    // Fallback to local Redis if cloud endpoint is unreachable
-    let local_client = redis::Client::open("redis://127.0.0.1:6379")?;
-    let local_con = tokio::time::timeout(
-        Duration::from_secs(2),
-        local_client.get_multiplexed_async_connection(),
-    )
-    .await??;
-    Ok(local_con)
 }
 
 /// Insert a new user into Redis
-pub async fn add_user(client: &redis::Client, user: User) -> Result<User> {
-    let mut con = get_con(client).await?;
+pub async fn add_user(conn_mgr: &ConnectionManager, user: User) -> Result<User> {
+    let mut con = conn_mgr.clone();
     let user_id = user.id.clone().unwrap_or_else(|| format!("usr_{}", uuid::Uuid::new_v4()));
     let full_user = User {
         id: Some(user_id.clone()),
@@ -50,8 +51,8 @@ pub async fn add_user(client: &redis::Client, user: User) -> Result<User> {
 }
 
 /// Retrieve all users from Redis
-pub async fn get_users(client: &redis::Client) -> Result<Vec<User>> {
-    let mut con = get_con(client).await?;
+pub async fn get_users(conn_mgr: &ConnectionManager) -> Result<Vec<User>> {
+    let mut con = conn_mgr.clone();
     let user_ids: Vec<String> = con.smembers(USERS_INDEX_KEY).await.unwrap_or_default();
     let mut users = Vec::new();
 
@@ -70,8 +71,8 @@ pub async fn get_users(client: &redis::Client) -> Result<Vec<User>> {
 }
 
 /// Retrieve user by ID from Redis
-pub async fn get_user_by_id(client: &redis::Client, id: &str) -> Result<User> {
-    let mut con = get_con(client).await?;
+pub async fn get_user_by_id(conn_mgr: &ConnectionManager, id: &str) -> Result<User> {
+    let mut con = conn_mgr.clone();
     let key = format!("user:{}", id);
     let raw_json: Option<String> = con.get(&key).await?;
     match raw_json {
@@ -81,8 +82,8 @@ pub async fn get_user_by_id(client: &redis::Client, id: &str) -> Result<User> {
 }
 
 /// Create new chat session in Redis
-pub async fn add_chat_session(client: &redis::Client, session: ChatSession) -> Result<ChatSession> {
-    let mut con = get_con(client).await?;
+pub async fn add_chat_session(conn_mgr: &ConnectionManager, session: ChatSession) -> Result<ChatSession> {
+    let mut con = conn_mgr.clone();
     let session_id = session.id.clone().unwrap_or_else(|| format!("sess_{}", uuid::Uuid::new_v4()));
     let full_session = ChatSession {
         id: Some(session_id.clone()),
@@ -99,8 +100,8 @@ pub async fn add_chat_session(client: &redis::Client, session: ChatSession) -> R
 }
 
 /// Retrieve all chat sessions from Redis
-pub async fn get_chat_sessions(client: &redis::Client) -> Result<Vec<ChatSession>> {
-    let mut con = get_con(client).await?;
+pub async fn get_chat_sessions(conn_mgr: &ConnectionManager) -> Result<Vec<ChatSession>> {
+    let mut con = conn_mgr.clone();
     let session_ids: Vec<String> = con.smembers(SESSIONS_INDEX_KEY).await.unwrap_or_default();
     let mut sessions = Vec::new();
 
@@ -119,8 +120,8 @@ pub async fn get_chat_sessions(client: &redis::Client) -> Result<Vec<ChatSession
 }
 
 /// Save message to Redis List
-pub async fn add_message(client: &redis::Client, message: Message) -> Result<Message> {
-    let mut con = get_con(client).await?;
+pub async fn add_message(conn_mgr: &ConnectionManager, message: Message) -> Result<Message> {
+    let mut con = conn_mgr.clone();
     let msg_id = message.id.clone().unwrap_or_else(|| format!("msg_{}", uuid::Uuid::new_v4()));
     let full_msg = Message {
         id: Some(msg_id),
@@ -136,8 +137,8 @@ pub async fn add_message(client: &redis::Client, message: Message) -> Result<Mes
 }
 
 /// Get messages for a chat session from Redis
-pub async fn get_messages_by_session(client: &redis::Client, session_id: &str) -> Result<Vec<Message>> {
-    let mut con = get_con(client).await?;
+pub async fn get_messages_by_session(conn_mgr: &ConnectionManager, session_id: &str) -> Result<Vec<Message>> {
+    let mut con = conn_mgr.clone();
     let key = format!("messages:{}", session_id);
     let raw_msgs: Vec<String> = con.lrange(&key, 0, -1).await?;
 
@@ -145,9 +146,10 @@ pub async fn get_messages_by_session(client: &redis::Client, session_id: &str) -
     for raw in raw_msgs {
         match serde_json::from_str::<Message>(&raw) {
             Ok(msg) => messages.push(msg),
-            Err(e) => eprintln!("Failed to parse Message JSON from Redis: {}", e),
+            Err(e) => tracing::error!("Failed to parse Message JSON from Redis: {}", e),
         }
     }
 
     Ok(messages)
 }
+
