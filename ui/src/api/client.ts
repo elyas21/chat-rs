@@ -15,7 +15,8 @@ const LOCAL_STORAGE_KEYS = {
   AUTH_SESSION: 'rs_chat_auth_session',
 };
 
-const FETCH_TIMEOUT_MS = 6000;
+// 20 second timeout to accommodate Render free-tier cold starts
+const FETCH_TIMEOUT_MS = 20000;
 
 function getLocal<T>(key: string, defaultVal: T): T {
   try {
@@ -32,6 +33,20 @@ function setLocal<T>(key: string, val: T): void {
   } catch (e) {
     console.error('LocalStorage write error:', e);
   }
+}
+
+function formatErrorMessage(err: any, fallback: string): string {
+  if (!err) return fallback;
+  const msg = err.message || String(err);
+  if (
+    msg.includes('signal timed out') ||
+    msg.includes('timed out') ||
+    err.name === 'AbortError' ||
+    err.name === 'TimeoutError'
+  ) {
+    return 'Connection timed out. Render backend may be waking up from sleep. Please wait a few seconds and try again.';
+  }
+  return msg || fallback;
 }
 
 // Utility to extract string ID
@@ -63,11 +78,11 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/health`, {
         method: 'GET',
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(15000),
       });
       if (!res.ok) return false;
       const data = await res.json();
-      return data.status === 'ok';
+      return data.status === 'ok' && data.redis === true;
     } catch {
       return false;
     }
@@ -88,7 +103,7 @@ export const api = {
       const data = await res.json();
       return { data, isBackend: true };
     } catch (err: any) {
-      throw new Error(err.message || 'Unable to connect to Redis Cloud server');
+      throw new Error(formatErrorMessage(err, 'Unable to connect to Redis Cloud server'));
     }
   },
 
@@ -110,7 +125,7 @@ export const api = {
       const data = await res.json();
       return { data, isBackend: true };
     } catch (err: any) {
-      throw new Error(err.message || 'Failed to save user into Redis Cloud');
+      throw new Error(formatErrorMessage(err, 'Failed to save user into Redis Cloud'));
     }
   },
 
@@ -155,7 +170,7 @@ export const api = {
       };
       return { data: sessionWithFlag, isBackend: true };
     } catch (err: any) {
-      throw new Error(err.message || 'Failed to create room in Redis Cloud');
+      throw new Error(formatErrorMessage(err, 'Failed to create room in Redis Cloud'));
     }
   },
 
@@ -246,7 +261,7 @@ export const api = {
       const data = await res.json();
       return { data, isBackend: true };
     } catch (err: any) {
-      throw new Error(err.message || 'Failed to send message to Redis Cloud');
+      throw new Error(formatErrorMessage(err, 'Failed to send message to Redis Cloud'));
     }
   },
 
@@ -254,31 +269,40 @@ export const api = {
    * Authorize JWT credentials (POST /v1/authorize)
    */
   async authorize(clientId: string, clientSecret: string): Promise<{ data: { access_token: string; token_type: string } }> {
-    const res = await fetch(`${API_BASE}/authorize`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Invalid credentials');
+    try {
+      const res = await fetch(`${API_BASE}/authorize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Invalid credentials');
+      }
+      return { data };
+    } catch (err: any) {
+      throw new Error(formatErrorMessage(err, 'Failed to authorize credentials'));
     }
-    return { data };
   },
 
   async getProtected(token: string): Promise<string> {
-    const res = await fetch(`${API_BASE}/protected`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    const text = await res.text();
-    if (!res.ok) {
-      throw new Error(text || 'Unauthorized request');
+    try {
+      const res = await fetch(`${API_BASE}/protected`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        throw new Error(text || 'Unauthorized request');
+      }
+      return text;
+    } catch (err: any) {
+      throw new Error(formatErrorMessage(err, 'Protected endpoint request failed'));
     }
-    return text;
   }
 };
+

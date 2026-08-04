@@ -47,6 +47,11 @@ export function App() {
       const isOnline = await api.checkHealth();
       setIsBackendConnected(isOnline);
 
+      if (!isOnline) {
+        setDbError('Redis Cloud database server is offline or cold-starting.');
+        return;
+      }
+
       // Load Users from Redis Cloud
       const usersRes = await api.getUsers();
       setUsers(usersRes.data);
@@ -95,6 +100,9 @@ export function App() {
     const interval = setInterval(async () => {
       const isOnline = await api.checkHealth();
       setIsBackendConnected(isOnline);
+      if (isOnline) {
+        setDbError('');
+      }
 
       if (activeSessionId && authSession && isOnline) {
         const res = await api.getMessages(activeSessionId);
