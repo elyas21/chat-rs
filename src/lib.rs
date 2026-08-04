@@ -16,30 +16,24 @@ pub struct AppState {
 impl AppState {
     /// Create a new AppState with an auto-reconnecting Redis ConnectionManager
     pub async fn new(redis_url: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let client = match redis::Client::open(redis_url) {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::warn!("Failed to open Redis client for {}: {}. Falling back to localhost.", redis_url, e);
-                redis::Client::open("redis://127.0.0.1:6379")?
-            }
-        };
+        let client = redis::Client::open(redis_url)?;
+
+        tracing::info!("Establishing ConnectionManager for Redis endpoint: {}", redis_url);
 
         let conn_manager = match tokio::time::timeout(
-            std::time::Duration::from_secs(2),
+            std::time::Duration::from_secs(15),
             ConnectionManager::new(client.clone()),
         )
         .await
         {
             Ok(Ok(mgr)) => mgr,
             Ok(Err(e)) => {
-                tracing::warn!("Failed to connect to primary Redis endpoint ({}): {}. Trying local fallback.", redis_url, e);
-                let fallback_client = redis::Client::open("redis://127.0.0.1:6379")?;
-                ConnectionManager::new(fallback_client.clone()).await?
+                tracing::error!("Failed to connect to Redis endpoint ({}): {}", redis_url, e);
+                return Err(Box::new(e));
             }
             Err(_) => {
-                tracing::warn!("Timeout connecting to primary Redis endpoint ({}). Trying local fallback.", redis_url);
-                let fallback_client = redis::Client::open("redis://127.0.0.1:6379")?;
-                ConnectionManager::new(fallback_client.clone()).await?
+                tracing::error!("Timeout connecting to Redis endpoint ({})", redis_url);
+                return Err(anyhow::anyhow!("Timeout connecting to Redis endpoint ({})", redis_url).into());
             }
         };
 

@@ -16,10 +16,30 @@ fn get_test_url() -> String {
 }
 
 async fn get_test_conn_manager() -> redis::aio::ConnectionManager {
-    let client = redis::Client::open(get_test_url()).expect("Failed to create Redis client");
-    db::get_con_from_client(&client)
+    let url = get_test_url();
+    if let Ok(client) = redis::Client::open(url.clone()) {
+        if let Ok(Ok(mgr)) = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            redis::aio::ConnectionManager::new(client),
+        )
         .await
-        .expect("Failed to get Redis ConnectionManager")
+        {
+            return mgr;
+        }
+    }
+
+    let local_client = redis::Client::open("redis://127.0.0.1:6379").expect("Failed to create local Redis client");
+    redis::aio::ConnectionManager::new(local_client)
+        .await
+        .expect("Failed to connect to local test Redis")
+}
+
+async fn get_test_app_state() -> AppState {
+    let url = get_test_url();
+    if let Ok(state) = AppState::new(&url).await {
+        return state;
+    }
+    AppState::new("redis://127.0.0.1:6379").await.expect("Failed to create local AppState")
 }
 
 #[tokio::test]
@@ -113,8 +133,7 @@ async fn test_message_persistence() {
 
 #[tokio::test]
 async fn test_axum_http_api_routes() {
-    let url = get_test_url();
-    let state = AppState::new(&url).await.expect("Failed to create AppState");
+    let state = get_test_app_state().await;
     let app = routes::app_router(state);
 
     // 1. GET /v1/users

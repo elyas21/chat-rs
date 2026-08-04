@@ -17,18 +17,14 @@ pub async fn get_con(conn_mgr: &ConnectionManager) -> Result<ConnectionManager> 
 /// Helper to create a ConnectionManager directly from a redis::Client (for legacy or test usage)
 pub async fn get_con_from_client(client: &redis::Client) -> Result<ConnectionManager> {
     match tokio::time::timeout(
-        std::time::Duration::from_secs(2),
+        std::time::Duration::from_secs(10),
         ConnectionManager::new(client.clone()),
     )
     .await
     {
         Ok(Ok(mgr)) => Ok(mgr),
-        _ => {
-            tracing::warn!("Primary Redis client connection failed/timed out. Falling back to local Redis 127.0.0.1:6379");
-            let fallback_client = redis::Client::open("redis://127.0.0.1:6379")?;
-            let mgr = ConnectionManager::new(fallback_client).await?;
-            Ok(mgr)
-        }
+        Ok(Err(e)) => Err(anyhow::anyhow!("Failed to establish Redis ConnectionManager: {}", e)),
+        Err(_) => Err(anyhow::anyhow!("Timeout connecting to Redis endpoint")),
     }
 }
 
